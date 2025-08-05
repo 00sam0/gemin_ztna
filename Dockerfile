@@ -13,14 +13,11 @@ COPY frontend/package*.json ./
 # Install dependencies
 RUN npm install
 
-# --- FIX: Add execute permissions to the vite command ---
-RUN chmod +x /app/frontend/node_modules/.bin/vite
-
 # Copy the rest of the frontend source code
 COPY frontend/ ./
 
-# Build the React app for production
-RUN npm run build
+# Build the React app for production using npx (more robust)
+RUN npx vite build
 
 
 # --- Stage 2: Build and run FastAPI Backend ---

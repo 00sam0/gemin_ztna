@@ -2,15 +2,12 @@ services:
   # A Docker web service
   - type: web
     name: ztna-app
-    # 'docker' indicates that Render should build from a Dockerfile
     runtime: docker
-    # Add this line to select the free instance type
     plan: free
-    # Path to your Dockerfile, relative to the repo root
+    # Add this line to force a clean build
+    clearCache: true
     dockerfilePath: ./Dockerfile
-    # Set up a health check to ensure your service is running
     healthCheckPath: /
-    # Forward all requests on port 80 to the container's port 8000
     envVars:
       - key: PORT
         value: 8000
