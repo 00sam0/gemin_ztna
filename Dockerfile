@@ -1,8 +1,8 @@
 # Dockerfile
 
 # --- Stage 1: Build React Frontend ---
-# Use a Node.js image to build the static files for the React app
-FROM node:18-alpine AS build
+# Use the full Node.js image to avoid permission issues
+FROM node:18 AS build
 
 # Set the working directory
 WORKDIR /app/frontend
@@ -16,8 +16,8 @@ RUN npm install
 # Copy the rest of the frontend source code
 COPY frontend/ ./
 
-# Build the React app for production using npx (more robust)
-RUN npx vite build
+# Build the React app for production
+RUN npm run build
 
 
 # --- Stage 2: Build and run FastAPI Backend ---
