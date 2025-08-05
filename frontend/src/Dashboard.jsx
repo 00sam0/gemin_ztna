@@ -91,7 +91,7 @@ const Dashboard = ({ token, onLogout }) => {
                       <tr key={u.email}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{u.full_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{u.email}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{u.role}</td>
+                        <td className="px-6 py-4 whitespace-nowrawrap text-sm text-gray-500">{u.role}</td>
                       </tr>
                     ))}
                   </tbody>

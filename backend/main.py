@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from typing import List, Optional
@@ -138,6 +139,11 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 async def read_all_users(admin_user: User = Depends(require_admin_role)):
     return list(fake_users_db.values())
 
-@app.get("/")
-def read_root():
-    return {"message": "ZTNA Backend is running"}
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
+
+# --- Static Files Mount ---
+# This must come AFTER all your API routes
+# It serves the React app's index.html for any path not caught by the API routes
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
