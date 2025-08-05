@@ -4,11 +4,10 @@
 # Use the full Node.js image to avoid permission issues
 FROM node:18 AS build
 
-# Set the working directory
-WORKDIR /app/frontend
+# Set a dedicated working directory for the frontend build
+WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock)
-# package-lock.json is crucial for `npm ci`
+# Copy package.json and package-lock.json first to leverage Docker cache
 COPY frontend/package*.json ./
 
 # Install dependencies using npm ci for a clean, reliable install
@@ -28,20 +27,25 @@ FROM python:3.9-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Install dependencies for the backend
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the backend requirements first
+COPY backend/requirements.txt ./backend/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r ./backend/requirements.txt
+
+# Copy the built frontend static files from the 'build' stage
+# The output of `vite build` is in the `dist` folder of the build stage
+COPY --from=build /app/dist ./backend/static
 
 # Copy the backend code into the container
 COPY ./backend /app/backend
 
-# Copy the built frontend static files from the 'build' stage
-# The output of `vite build` is in the `dist` folder
-COPY --from=build /app/frontend/dist ./backend/static
+# Set the final working directory to the backend folder
+WORKDIR /app/backend
 
 # Expose the port the app runs on
 EXPOSE 8000
 
 # Command to run the Uvicorn server
-# The --host 0.0.0.0 is crucial for it to be accessible from outside the container
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# This will now run from within the /app/backend directory
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
