@@ -8,10 +8,11 @@ FROM node:18 AS build
 WORKDIR /app/frontend
 
 # Copy package.json and package-lock.json (or yarn.lock)
+# package-lock.json is crucial for `npm ci`
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies using npm ci for a clean, reliable install
+RUN npm ci
 
 # Copy the rest of the frontend source code
 COPY frontend/ ./
