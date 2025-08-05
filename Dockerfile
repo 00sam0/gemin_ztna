@@ -1,4 +1,7 @@
+# Dockerfile
 
+# --- Stage 1: Build React Frontend ---
+# Use a Node.js image to build the static files for the React app
 FROM node:18-alpine AS build
 
 # Set the working directory
@@ -8,8 +11,10 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 
 # Install dependencies
-# Using --legacy-peer-deps for compatibility with some create-react-app versions
-RUN npm install --legacy-peer-deps
+RUN npm install
+
+# --- FIX: Add execute permissions to the vite command ---
+RUN chmod +x /app/frontend/node_modules/.bin/vite
 
 # Copy the rest of the frontend source code
 COPY frontend/ ./
@@ -33,8 +38,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./backend /app/backend
 
 # Copy the built frontend static files from the 'build' stage
-# FastAPI will be configured to serve these files
-COPY --from=build /app/frontend/build ./backend/static
+# The output of `vite build` is in the `dist` folder
+COPY --from=build /app/frontend/dist ./backend/static
 
 # Expose the port the app runs on
 EXPOSE 8000
@@ -42,4 +47,3 @@ EXPOSE 8000
 # Command to run the Uvicorn server
 # The --host 0.0.0.0 is crucial for it to be accessible from outside the container
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
