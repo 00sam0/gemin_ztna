@@ -1,13 +1,9 @@
 services:
-  # A Docker web service
   - type: web
     name: ztna-app
     runtime: docker
-    plan: free
-    # Add this line to force a clean build
-    clearCache: true
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 8000
