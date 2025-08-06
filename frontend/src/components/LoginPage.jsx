@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const LoginPage = ({ onLogin }) => {
+const LoginPage = ({ onLogin, onSwitchToRegister }) => {
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('password'); // Default password for demo
   const [error, setError] = useState('');
@@ -101,7 +101,10 @@ const LoginPage = ({ onLogin }) => {
           </div>
         </form>
         <p className="text-xs text-center text-gray-500">
-            For local dev, an initial admin user is created on first run. Check backend logs.
+            Don't have an account?{' '}
+            <button onClick={onSwitchToRegister} className="font-medium text-indigo-600 hover:text-indigo-500">
+                Sign up
+            </button>
         </p>
       </div>
     </div>

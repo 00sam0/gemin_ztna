@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
 import Dashboard from './components/Dashboard';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [user, setUser] = useState(null);
+  const [view, setView] = useState('login'); // 'login' or 'register'
 
   const handleLogin = (newToken, newUser) => {
     localStorage.setItem('token', newToken);
@@ -16,6 +18,7 @@ function App() {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    setView('login');
   };
   
   // Fetch user data on initial load if token exists
@@ -40,12 +43,19 @@ function App() {
     fetchUser();
   }, [token]);
 
+  const renderAuth = () => {
+    if (view === 'login') {
+      return <LoginPage onLogin={handleLogin} onSwitchToRegister={() => setView('register')} />;
+    }
+    return <RegisterPage onSwitchToLogin={() => setView('login')} />;
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {token && user ? (
         <Dashboard user={user} token={token} onLogout={handleLogout} />
       ) : (
-        <LoginPage onLogin={handleLogin} />
+        renderAuth()
       )}
     </div>
   );

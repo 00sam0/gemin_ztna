@@ -53,14 +53,15 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str
-    role: str = "employee"
 
 class UserCreate(UserBase):
     password: str
+    role: str = "employee" # Role is set here for creation
 
 class User(UserBase):
     id: int
     disabled: bool
+    role: str
     class Config:
         from_attributes = True
 
@@ -125,8 +126,8 @@ def get_db():
 def get_user_by_email(db: Session, email: str):
     return db.query(UserDB).filter(UserDB.email == email).first()
 
-def create_log(db: Session, actor: User, action: str, details: Optional[str] = None):
-    log_entry = LogDB(actor_email=actor.email, action=action, details=details)
+def create_log(db: Session, actor_email: str, action: str, details: Optional[str] = None):
+    log_entry = LogDB(actor_email=actor_email, action=action, details=details)
     db.add(log_entry)
     db.commit()
 
@@ -171,33 +172,37 @@ def require_admin_role(current_user: User = Depends(get_current_active_user)):
     return current_user
 
 # --- API Endpoints ---
+
+# NEW: Public endpoint for user registration
+@app.post("/api/register", response_model=User, status_code=status.HTTP_201_CREATED)
+async def register_new_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = pwd_context.hash(user.password)
+    new_user = UserDB(
+        email=user.email,
+        full_name=user.full_name,
+        hashed_password=hashed_password,
+        role="employee" # All signups are employees
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    create_log(db, new_user.email, "USER_REGISTER_SUCCESS")
+    return new_user
+
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    print("--- LOGIN ATTEMPT ---")
-    print(f"Attempting to log in user: {form_data.username}")
     user = get_user_by_email(db, email=form_data.username)
-    
-    if not user:
-        print("Result: User not found in database.")
+    if not user or not pwd_context.verify(form_data.password, user.hashed_password):
+        create_log(db, form_data.username, "USER_LOGIN_FAIL", "Incorrect email or password")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
     
-    print(f"Result: User found. DB Hashed Password: {user.hashed_password}")
-    
-    is_password_correct = pwd_context.verify(form_data.password, user.hashed_password)
-    print(f"Password verification result: {is_password_correct}")
-
-    if not is_password_correct:
-        print("Result: Password verification FAILED.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-    
-    print("Result: Password verification SUCCEEDED.")
-    create_log(db, user, "USER_LOGIN_SUCCESS")
+    create_log(db, user.email, "USER_LOGIN_SUCCESS")
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
@@ -214,7 +219,7 @@ async def read_all_users(db: Session = Depends(get_db)):
     return db.query(UserDB).all()
 
 @app.post("/api/admin/users", response_model=User, status_code=status.HTTP_201_CREATED)
-async def create_new_user(user: UserCreate, admin_user: User = Depends(require_admin_role), db: Session = Depends(get_db)):
+async def create_new_user_by_admin(user: UserCreate, admin_user: User = Depends(require_admin_role), db: Session = Depends(get_db)):
     db_user = get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -223,7 +228,7 @@ async def create_new_user(user: UserCreate, admin_user: User = Depends(require_a
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    create_log(db, admin_user, "CREATE_USER", f"Created user {new_user.email}")
+    create_log(db, admin_user.email, "CREATE_USER", f"Admin created user {new_user.email}")
     return new_user
 
 @app.delete("/api/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -237,7 +242,7 @@ async def delete_user(user_id: int, admin_user: User = Depends(require_admin_rol
     email_of_deleted_user = user_to_delete.email
     db.delete(user_to_delete)
     db.commit()
-    create_log(db, admin_user, "DELETE_USER", f"Deleted user {email_of_deleted_user}")
+    create_log(db, admin_user.email, "DELETE_USER", f"Deleted user {email_of_deleted_user}")
     return
 
 @app.get("/api/admin/logs", response_model=List[Log], dependencies=[Depends(require_admin_role)])
@@ -249,9 +254,5 @@ def health_check():
     return {"status": "ok"}
 
 # --- Static Files Mount ---
-# This must come AFTER all your API routes
-# It serves the React app's index.html for any path not caught by the API routes
-# We only mount this in production, where the 'static' folder is created by the Dockerfile.
 if os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
-    
