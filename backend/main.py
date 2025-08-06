@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
@@ -62,7 +62,7 @@ class User(UserBase):
     id: int
     disabled: bool
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Log(BaseModel):
     id: int
@@ -71,7 +71,7 @@ class Log(BaseModel):
     action: str
     details: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Token(BaseModel):
     access_token: str
@@ -87,6 +87,22 @@ app = FastAPI()
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # Create a default admin user if one doesn't exist
+    db = SessionLocal()
+    admin_user = get_user_by_email(db, "admin@example.com")
+    if not admin_user:
+        print("Creating default admin user: admin@example.com / password")
+        hashed_password = pwd_context.hash("password")
+        default_admin = UserDB(
+            email="admin@example.com",
+            full_name="Default Admin",
+            hashed_password=hashed_password,
+            role="admin"
+        )
+        db.add(default_admin)
+        db.commit()
+    db.close()
+
 
 # --- CORS Middleware ---
 app.add_middleware(
@@ -215,3 +231,4 @@ def health_check():
 
 # --- Static Files Mount ---
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
