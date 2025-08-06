@@ -173,13 +173,30 @@ def require_admin_role(current_user: User = Depends(get_current_active_user)):
 # --- API Endpoints ---
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    print("--- LOGIN ATTEMPT ---")
+    print(f"Attempting to log in user: {form_data.username}")
     user = get_user_by_email(db, email=form_data.username)
-    if not user or not pwd_context.verify(form_data.password, user.hashed_password):
+    
+    if not user:
+        print("Result: User not found in database.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
     
+    print(f"Result: User found. DB Hashed Password: {user.hashed_password}")
+    
+    is_password_correct = pwd_context.verify(form_data.password, user.hashed_password)
+    print(f"Password verification result: {is_password_correct}")
+
+    if not is_password_correct:
+        print("Result: Password verification FAILED.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+    
+    print("Result: Password verification SUCCEEDED.")
     create_log(db, user, "USER_LOGIN_SUCCESS")
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
