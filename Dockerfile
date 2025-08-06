@@ -1,18 +1,21 @@
+# Dockerfile
+
 # --- Stage 1: Build the React frontend ---
 # This stage builds the static assets for the React application.
 FROM node:18 as frontend-builder
 WORKDIR /app
 
 # Copy package.json AND package-lock.json
-# The wildcard `*` handles cases where package-lock.json might not exist initially.
-COPY frontend/package*.json ./
+COPY frontend/package.json frontend/package-lock.json* ./
 
 # Use npm install. It's more flexible than npm ci and will bypass the lockfile error.
 RUN npm install
 
 # Copy the rest of the frontend code
 COPY frontend/ .
-RUN npm run build
+
+# Execute the vite build script directly with node to bypass permission issues
+RUN node_modules/vite/bin/vite.js build
 
 # --- Stage 2: The final application image ---
 # This stage builds the final Python image, copying in the built frontend.
