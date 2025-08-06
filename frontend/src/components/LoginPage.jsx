@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 const LoginPage = ({ onLogin }) => {
-  const [email, setEmail] = useState('employee@example.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('admin@example.com');
+  const [password, setPassword] = useState('password'); // Default password for demo
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -11,25 +11,33 @@ const LoginPage = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    const API_URL = import.meta.env.VITE_API_URL || '/';
-
     try {
-        const formData = new URLSearchParams();
-        formData.append('username', email);
-        formData.append('password', password);
+      const formData = new URLSearchParams();
+      formData.append('username', email);
+      formData.append('password', password);
 
-      const response = await fetch(`${API_URL}token`, {
+      const tokenResponse = await fetch('/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
       });
 
-      if (!response.ok) {
+      if (!tokenResponse.ok) {
         throw new Error('Login failed. Please check your credentials.');
       }
+      const tokenData = await tokenResponse.json();
+      
+      const userResponse = await fetch('/api/users/me/', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      
+      if (!userResponse.ok) {
+          throw new Error('Could not fetch user profile.');
+      }
+      const userData = await userResponse.json();
 
-      const data = await response.json();
-      onLogin(data.access_token);
+      onLogin(tokenData.access_token, userData);
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -41,14 +49,11 @@ const LoginPage = ({ onLogin }) => {
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
         <h2 className="text-2xl font-bold text-center text-gray-900">
-          ZTNA Secure Login
+          ZTNA Secure Portal
         </h2>
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email address
             </label>
             <div className="mt-1">
@@ -95,8 +100,8 @@ const LoginPage = ({ onLogin }) => {
             </button>
           </div>
         </form>
-         <p className="text-xs text-center text-gray-500">
-            ㅤ
+        <p className="text-xs text-center text-gray-500">
+            For local dev, an initial admin user is created on first run. Check backend logs.
         </p>
       </div>
     </div>

@@ -1,4 +1,6 @@
+# render.yaml
 services:
+  # The Web Service (your application)
   - type: web
     name: ztna-app
     runtime: docker
@@ -6,5 +8,14 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
-      - key: PORT
-        value: 8000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ztna-db
+          property: connectionString
+      - key: SECRET_KEY # For JWT
+        generateValue: true
+
+  # A free-tier PostgreSQL database
+  - type: psql
+    name: ztna-db
+    plan: free

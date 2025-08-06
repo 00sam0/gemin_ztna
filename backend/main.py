@@ -1,39 +1,92 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime, timedelta
-import secrets
+
+# Database imports
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+
+# Password hashing
+from passlib.context import CryptContext
 
 # --- Configuration ---
-SECRET_KEY = secrets.token_urlsafe(32)
+# Use environment variables for sensitive data
+SECRET_KEY = os.getenv("SECRET_KEY", "a_default_secret_key_for_local_dev")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/ztna")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# In-memory "database" for demonstration purposes
-fake_users_db = {
-    "admin@example.com": {
-        "username": "admin@example.com",
-        "full_name": "Admin User",
-        "email": "admin@example.com",
-        "hashed_password": "fakehashedpassword", 
-        "role": "admin",
-        "disabled": False,
-    },
-    "employee@example.com": {
-        "username": "employee@example.com",
-        "full_name": "Employee User",
-        "email": "employee@example.com",
-        "hashed_password": "fakehashedpassword",
-        "role": "employee",
-        "disabled": False,
-    }
-}
+# --- Database Setup ---
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
+# --- SQLAlchemy Models ---
+class UserDB(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="employee")
+    disabled = Column(Boolean, default=False)
+
+class LogDB(Base):
+    __tablename__ = "logs"
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    actor_email = Column(String)
+    action = Column(String)
+    details = Column(String, nullable=True)
+
+# --- Password Hashing ---
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# --- Pydantic Models (for API requests/responses) ---
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: str = "employee"
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    disabled: bool
+    class Config:
+        orm_mode = True
+
+class Log(BaseModel):
+    id: int
+    timestamp: datetime
+    actor_email: str
+    action: str
+    details: Optional[str] = None
+    class Config:
+        orm_mode = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+# --- FastAPI App Initialization ---
 app = FastAPI()
+
+# Create database tables on startup
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
 
 # --- CORS Middleware ---
 app.add_middleware(
@@ -44,45 +97,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
-class User(BaseModel):
-    username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = None
-    role: str
+# --- Database Dependency ---
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-class UserInDB(User):
-    hashed_password: str
+# --- Utility Functions ---
+def get_user_by_email(db: Session, email: str):
+    return db.query(UserDB).filter(UserDB.email == email).first()
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-# --- Helper Functions ---
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db[username]
-        return UserInDB(**user_dict)
+def create_log(db: Session, actor: User, action: str, details: Optional[str] = None):
+    log_entry = LogDB(actor_email=actor.email, action=action, details=details)
+    db.add(log_entry)
+    db.commit()
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # --- Authentication & Authorization ---
-from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -90,13 +131,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user = get_user(fake_users_db, username=token_data.username)
+    user = get_user_by_email(db, email=email)
     if user is None:
         raise credentials_exception
     return user
@@ -106,7 +146,6 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-# --- RBAC Dependency ---
 def require_admin_role(current_user: User = Depends(get_current_active_user)):
     if current_user.role != "admin":
         raise HTTPException(
@@ -117,17 +156,16 @@ def require_admin_role(current_user: User = Depends(get_current_active_user)):
 
 # --- API Endpoints ---
 @app.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = get_user(fake_users_db, form_data.username)
-    if not user or user.hashed_password != "fakehashedpassword":
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = get_user_by_email(db, email=form_data.username)
+    if not user or not pwd_context.verify(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Incorrect email or password",
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    create_log(db, user, "USER_LOGIN_SUCCESS")
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -135,15 +173,45 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 
-@app.get("/api/admin/users", response_model=List[User])
-async def read_all_users(admin_user: User = Depends(require_admin_role)):
-    return list(fake_users_db.values())
+# --- Admin Endpoints ---
+@app.get("/api/admin/users", response_model=List[User], dependencies=[Depends(require_admin_role)])
+async def read_all_users(db: Session = Depends(get_db)):
+    return db.query(UserDB).all()
+
+@app.post("/api/admin/users", response_model=User, status_code=status.HTTP_201_CREATED)
+async def create_new_user(user: UserCreate, admin_user: User = Depends(require_admin_role), db: Session = Depends(get_db)):
+    db_user = get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = pwd_context.hash(user.password)
+    new_user = UserDB(**user.dict(exclude={"password"}), hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    create_log(db, admin_user, "CREATE_USER", f"Created user {new_user.email}")
+    return new_user
+
+@app.delete("/api/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(user_id: int, admin_user: User = Depends(require_admin_role), db: Session = Depends(get_db)):
+    user_to_delete = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user_to_delete.email == admin_user.email:
+        raise HTTPException(status_code=400, detail="Admin cannot delete themselves")
+    
+    email_of_deleted_user = user_to_delete.email
+    db.delete(user_to_delete)
+    db.commit()
+    create_log(db, admin_user, "DELETE_USER", f"Deleted user {email_of_deleted_user}")
+    return
+
+@app.get("/api/admin/logs", response_model=List[Log], dependencies=[Depends(require_admin_role)])
+async def read_logs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return db.query(LogDB).order_by(LogDB.timestamp.desc()).offset(skip).limit(limit).all()
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
 
 # --- Static Files Mount ---
-# This must come AFTER all your API routes
-# It serves the React app's index.html for any path not caught by the API routes
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
