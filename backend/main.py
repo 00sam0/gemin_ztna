@@ -230,4 +230,8 @@ def health_check():
     return {"status": "ok"}
 
 # --- Static Files Mount ---
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# This must come AFTER all your API routes
+# It serves the React app's index.html for any path not caught by the API routes
+# We only mount this in production, where the 'static' folder is created by the Dockerfile.
+if os.path.exists("static"):
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")
