@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 const LoginPage = ({ onLogin, onSwitchToRegister }) => {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('password'); // Default password for demo
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState(''); // Default password for demo
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
