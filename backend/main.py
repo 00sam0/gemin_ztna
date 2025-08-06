@@ -206,7 +206,7 @@ async def download_file(file_id: int, current_user: User = Depends(get_current_a
     if not file_record or not os.path.exists(file_record.filepath):
         raise HTTPException(status_code=404, detail="File not found")
     
-    create_log(db, current_user.email, "FILE_DOWNLOAD", f"Downloaded file: {file_record.filename}")
+    create_log(db, current_user.email, "Downloaded file", f"Downloaded file: {file_record.filename}")
     
     def iterfile():
         with open(file_record.filepath, mode="rb") as file_like:
