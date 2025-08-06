@@ -1,12 +1,16 @@
-# Dockerfile
-
 # --- Stage 1: Build the React frontend ---
 # This stage builds the static assets for the React application.
 FROM node:18 as frontend-builder
 WORKDIR /app
+
+# Copy package.json AND package-lock.json
+# The wildcard `*` handles cases where package-lock.json might not exist initially.
 COPY frontend/package*.json ./
-# Use npm ci for a clean, reliable install in automated environments
-RUN npm ci
+
+# Use npm install. It's more flexible than npm ci and will bypass the lockfile error.
+RUN npm install
+
+# Copy the rest of the frontend code
 COPY frontend/ .
 RUN npm run build
 

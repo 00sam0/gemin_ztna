@@ -6,14 +6,14 @@ const Dashboard = ({ token, onLogout }) => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+  const API_URL = import.meta.env.VITE_API_URL || '/';
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError('');
       try {
-        const userRes = await fetch(`${API_URL}/api/users/me/`, {
+        const userRes = await fetch(`${API_URL}api/users/me/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!userRes.ok) {
@@ -24,7 +24,7 @@ const Dashboard = ({ token, onLogout }) => {
         setUser(userData);
 
         if (userData.role === 'admin') {
-          const allUsersRes = await fetch(`${API_URL}/api/admin/users`, {
+          const allUsersRes = await fetch(`${API_URL}api/admin/users`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (allUsersRes.ok) {
@@ -91,7 +91,7 @@ const Dashboard = ({ token, onLogout }) => {
                       <tr key={u.email}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{u.full_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{u.email}</td>
-                        <td className="px-6 py-4 whitespace-nowrawrap text-sm text-gray-500">{u.role}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{u.role}</td>
                       </tr>
                     ))}
                   </tbody>

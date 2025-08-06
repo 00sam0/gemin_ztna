@@ -11,14 +11,14 @@ const LoginPage = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const API_URL = import.meta.env.VITE_API_URL || '/';
 
     try {
         const formData = new URLSearchParams();
         formData.append('username', email);
         formData.append('password', password);
 
-      const response = await fetch(`${API_URL}/token`, {
+      const response = await fetch(`${API_URL}token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
