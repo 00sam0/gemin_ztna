@@ -96,7 +96,7 @@ const LoginPage = ({ onLogin }) => {
           </div>
         </form>
          <p className="text-xs text-center text-gray-500">
-            Use `admin@example.com` or `employee@example.com` with any password.
+            ㅤ
         </p>
       </div>
     </div>
