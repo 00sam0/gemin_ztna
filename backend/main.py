@@ -254,3 +254,4 @@ def health_check():
 # We only mount this in production, where the 'static' folder is created by the Dockerfile.
 if os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
+    
