@@ -15,7 +15,7 @@ RUN npm install
 COPY frontend/ .
 
 # Execute the vite build script directly with node to bypass permission issues
-RUN node_modules/vite/bin/vite.js build
+RUN node node_modules/vite/bin/vite.js build
 
 # --- Stage 2: The final application image ---
 # This stage builds the final Python image, copying in the built frontend.
