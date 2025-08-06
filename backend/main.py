@@ -231,4 +231,3 @@ def health_check():
 
 # --- Static Files Mount ---
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
