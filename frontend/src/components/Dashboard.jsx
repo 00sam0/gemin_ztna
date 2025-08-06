@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import UserManagement from './UserManagement';
 import LogsViewer from './LogsViewer';
-import { LayoutDashboard, Users, ScrollText, LogOut } from 'lucide-react';
+import FileManagement from './FileManagement'; // New import
+import { LayoutDashboard, Users, ScrollText, Folder, LogOut } from 'lucide-react';
 
 const Dashboard = ({ user, token, onLogout }) => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -13,6 +14,8 @@ const Dashboard = ({ user, token, onLogout }) => {
         return <UserManagement token={token} />;
       case 'logs':
         return <LogsViewer token={token} />;
+      case 'files': // New case
+        return <FileManagement token={token} />;
       case 'dashboard':
       default:
         return <DashboardHome user={user} />;

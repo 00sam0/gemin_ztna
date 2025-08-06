@@ -1,9 +1,10 @@
 import React from 'react';
-import { LayoutDashboard, Users, ScrollText, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, ScrollText, Folder, LogOut } from 'lucide-react';
 
 const Sidebar = ({ user, activeView, setActiveView, onLogout }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'files', label: 'Files', icon: Folder },
     { id: 'users', label: 'User Management', icon: Users, adminOnly: true },
     { id: 'logs', label: 'Logs', icon: ScrollText, adminOnly: true },
   ];
