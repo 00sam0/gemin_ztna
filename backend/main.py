@@ -171,9 +171,9 @@ async def register_new_user(user: UserCreate, db: Session = Depends(get_db)):
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = get_user_by_email(db, email=form_data.username)
     if not user or not pwd_context.verify(form_data.password, user.hashed_password):
-        create_log(db, form_data.username, "USER_LOGIN_FAIL", "Incorrect email or password")
+        create_log(db, form_data.username, "Failed user login", "Incorrect email or password")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-    create_log(db, user.email, "USER_LOGIN_SUCCESS")
+    create_log(db, user.email, "Successful user login")
     return {"access_token": create_access_token(data={"sub": user.email}), "token_type": "bearer"}
 
 @app.get("/api/users/me/", response_model=User)
@@ -193,7 +193,7 @@ async def upload_file(file: UploadFile = File(...), current_user: User = Depends
     db.add(file_record)
     db.commit()
     db.refresh(file_record)
-    create_log(db, current_user.email, "FILE_UPLOAD", f"Uploaded file: {file.filename}")
+    create_log(db, current_user.email, "File upload", f"Uploaded file: {file.filename}")
     return file_record
 
 @app.get("/api/files", response_model=List[FileInfo])
@@ -238,7 +238,7 @@ async def delete_user(user_id: int, admin_user: User = Depends(require_admin_rol
     email_of_deleted_user = user_to_delete.email
     db.delete(user_to_delete)
     db.commit()
-    create_log(db, admin_user.email, "DELETE_USER", f"Deleted user {email_of_deleted_user}")
+    create_log(db, admin_user.email, "Deleted user", f"Deleted user {email_of_deleted_user}")
     return
 
 @app.get("/api/admin/logs", response_model=List[Log], dependencies=[Depends(require_admin_role)])
