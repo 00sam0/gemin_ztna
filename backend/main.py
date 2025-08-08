@@ -1,6 +1,6 @@
 import os
 import shutil
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +23,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "a_default_secret_key_for_local_dev")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/ztna")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-# This is the mount path defined in render.yaml
 FILE_STORAGE_PATH = "/var/data/files" 
 
 # --- Database Setup ---
@@ -53,6 +52,7 @@ class FileDB(Base):
     __tablename__ = "files"
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
+    folder = Column(String, default="general", index=True)
     filepath = Column(String, unique=True)
     uploaded_by_email = Column(String, ForeignKey("users.email"))
     upload_date = Column(DateTime, default=datetime.utcnow)
@@ -86,6 +86,7 @@ class Log(BaseModel):
 class FileInfo(BaseModel):
     id: int
     filename: str
+    folder: str
     uploaded_by_email: str
     upload_date: datetime
     class Config: { "from_attributes": True }
@@ -103,7 +104,7 @@ app = FastAPI()
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
-    os.makedirs(FILE_STORAGE_PATH, exist_ok=True) # Ensure storage directory exists
+    os.makedirs(FILE_STORAGE_PATH, exist_ok=True)
     db = SessionLocal()
     if not get_user_by_email(db, "admin@example.com"):
         hashed_password = pwd_context.hash("password")
@@ -152,7 +153,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 def require_admin_role(current_user: User = Depends(get_current_active_user)):
-    if current_user.role != "admin": raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted. Admin role required.")
+    if current_user.role != "admin": raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted.")
     return current_user
 
 # --- API Endpoints ---
@@ -171,10 +172,15 @@ async def register_new_user(user: UserCreate, db: Session = Depends(get_db)):
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = get_user_by_email(db, email=form_data.username)
     if not user or not pwd_context.verify(form_data.password, user.hashed_password):
-        create_log(db, form_data.username, "Failed user login", "Incorrect email or password")
+        create_log(db, form_data.username, "USER_LOGIN_FAIL", "Incorrect email or password")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-    create_log(db, user.email, "Successful user login")
+    create_log(db, user.email, "USER_LOGIN_SUCCESS")
     return {"access_token": create_access_token(data={"sub": user.email}), "token_type": "bearer"}
+
+@app.post("/api/logout")
+async def logout(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    create_log(db, current_user.email, "USER_LOGOUT_SUCCESS")
+    return {"message": "Logout successful"}
 
 @app.get("/api/users/me/", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
@@ -182,23 +188,28 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 
 # --- File Management Endpoints ---
 @app.post("/api/files/upload", response_model=FileInfo)
-async def upload_file(file: UploadFile = File(...), current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    filepath = os.path.join(FILE_STORAGE_PATH, file.filename)
-    if os.path.exists(filepath): raise HTTPException(status_code=400, detail="File with this name already exists.")
+async def upload_file(file: UploadFile = File(...), folder: str = Form("general"), current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    folder_path = os.path.join(FILE_STORAGE_PATH, folder)
+    os.makedirs(folder_path, exist_ok=True)
+    filepath = os.path.join(folder_path, file.filename)
+    if os.path.exists(filepath): raise HTTPException(status_code=400, detail="File with this name already exists in this folder.")
     
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    file_record = FileDB(filename=file.filename, filepath=filepath, uploaded_by_email=current_user.email)
+    file_record = FileDB(filename=file.filename, folder=folder, filepath=filepath, uploaded_by_email=current_user.email)
     db.add(file_record)
     db.commit()
     db.refresh(file_record)
-    create_log(db, current_user.email, "File upload", f"Uploaded file: {file.filename}")
+    create_log(db, current_user.email, "FILE_UPLOAD", f"Uploaded '{file.filename}' to folder '{folder}'")
     return file_record
 
 @app.get("/api/files", response_model=List[FileInfo])
-async def list_files(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    return db.query(FileDB).order_by(FileDB.upload_date.desc()).all()
+async def list_files(search: Optional[str] = None, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    query = db.query(FileDB)
+    if search:
+        query = query.filter(FileDB.filename.ilike(f"%{search}%"))
+    return query.order_by(FileDB.folder, FileDB.upload_date.desc()).all()
 
 @app.get("/api/files/download/{file_id}")
 async def download_file(file_id: int, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
@@ -206,15 +217,27 @@ async def download_file(file_id: int, current_user: User = Depends(get_current_a
     if not file_record or not os.path.exists(file_record.filepath):
         raise HTTPException(status_code=404, detail="File not found")
     
-    create_log(db, current_user.email, "Downloaded file", f"Downloaded file: {file_record.filename}")
+    create_log(db, current_user.email, "FILE_DOWNLOAD", f"Downloaded file: {file_record.filename}")
     
     def iterfile():
-        with open(file_record.filepath, mode="rb") as file_like:
-            yield from file_like
+        with open(file_record.filepath, mode="rb") as file_like: yield from file_like
             
     return StreamingResponse(iterfile(), media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename={file_record.filename}"})
 
 # --- Admin Endpoints ---
+@app.delete("/api/admin/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_file(file_id: int, admin_user: User = Depends(require_admin_role), db: Session = Depends(get_db)):
+    file_record = db.query(FileDB).filter(FileDB.id == file_id).first()
+    if not file_record: raise HTTPException(status_code=404, detail="File not found")
+    
+    if os.path.exists(file_record.filepath):
+        os.remove(file_record.filepath)
+        
+    db.delete(file_record)
+    db.commit()
+    create_log(db, admin_user.email, "FILE_DELETE", f"Admin deleted file: {file_record.filename}")
+    return
+
 @app.get("/api/admin/users", response_model=List[User], dependencies=[Depends(require_admin_role)])
 async def read_all_users(db: Session = Depends(get_db)):
     return db.query(UserDB).all()
@@ -238,7 +261,7 @@ async def delete_user(user_id: int, admin_user: User = Depends(require_admin_rol
     email_of_deleted_user = user_to_delete.email
     db.delete(user_to_delete)
     db.commit()
-    create_log(db, admin_user.email, "Deleted user", f"Deleted user {email_of_deleted_user}")
+    create_log(db, admin_user.email, "DELETE_USER", f"Deleted user {email_of_deleted_user}")
     return
 
 @app.get("/api/admin/logs", response_model=List[Log], dependencies=[Depends(require_admin_role)])

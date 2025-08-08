@@ -15,7 +15,7 @@ const Dashboard = ({ user, token, onLogout }) => {
       case 'logs':
         return <LogsViewer token={token} />;
       case 'files': // New case
-        return <FileManagement token={token} />;
+        return <FileManagement token={token} user={user} />;
       case 'dashboard':
       default:
         return <DashboardHome user={user} />;
